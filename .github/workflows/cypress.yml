@@ -1,0 +1,65 @@
+name: Cypress Tests
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Dependencies
+        run: npm install
+
+      - name: Start Application
+        run: |
+          echo "Starting the application..."
+          npm start &
+          echo $! > application_pid.txt
+          sleep 10
+
+      - name: Wait for Web Service to be fully ready
+        run: |
+          echo "Waiting for the web service to fully start..."
+          retries=30
+          until [ $retries -eq 0 ] || curl -s http://localhost:3000/users > /dev/null; do
+            echo "Web service is not ready yet..."
+            retries=$((retries - 1))
+            sleep 10
+          done
+          if [ $retries -eq 0 ]; then
+            echo "Web service failed to start in time"
+            exit 1
+          fi
+          echo "Web service is ready."
+          curl -s http://localhost:3000/users
+
+      - name: Install Cypress
+        run: npm install cypress --save-dev
+
+      - name: Run Cypress Tests
+        run: |
+          curl -s http://localhost:3000/users
+          npx cypress run
+        env:
+          CYPRESS_baseUrl: http://localhost:3000
+
+      - name: Upload Cypress Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: cypress-artifacts
+          path: |
+            cypress/screenshots
+            cypress/videos
+            cypress/results
+
+      - name: Stop Application
+        run: |
+          kill $(cat application_pid.txt)
